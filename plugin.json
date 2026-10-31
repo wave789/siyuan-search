@@ -1,0 +1,41 @@
+{
+  "name": "siyuan-search",
+  "author": "siyuan-search",
+  "url": "",
+  "version": "1.5.1",
+  "minAppVersion": "3.1.15",
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "docker"
+  ],
+  "frontends": [
+    "desktop",
+    "browser-desktop",
+    "desktop-window"
+  ],
+  "disabledInPublish": true,
+  "displayName": {
+    "default": "IDE Search",
+    "zh_CN": "IDE 搜索",
+    "zh-CN": "IDE 搜索"
+  },
+  "description": {
+    "default": "PyCharm-style find and replace in documents and workspaces, with case, whole word and regular expressions.",
+    "zh_CN": "像 PyCharm 一样查找与替换笔记：页内及全局替换、大小写、整词、正则和替换撤销。",
+    "zh-CN": "像 PyCharm 一样查找与替换笔记：页内及全局替换、大小写、整词、正则和替换撤销。"
+  },
+  "readme": {
+    "default": "README.md"
+  },
+  "keywords": [
+    "search",
+    "find",
+    "regex",
+    "搜索",
+    "正则",
+    "PyCharm"
+  ],
+  "icon": "icon.png"
+}

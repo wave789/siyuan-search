@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>IDE 搜索：笔记中的高亮</title>
+  <defs>
+    <linearGradient id="tile" x1="14" y1="8" x2="112" y2="124" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7d8dff"/><stop offset=".52" stop-color="#606de2"/><stop offset="1" stop-color="#4349aa"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="38" y1="22" x2="86" y2="101" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/><stop offset="1" stop-color="#e8efff"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="124" height="124" rx="29" fill="url(#tile)"/>
+  <rect x="3" y="3" width="122" height="122" rx="28" fill="none" stroke="#fff" stroke-opacity=".18"/>
+  <rect x="23" y="25" width="58" height="77" rx="9" fill="#c9d3ff" fill-opacity=".32" transform="rotate(-9 52 63.5)"/>
+  <path d="M43 20h31l19 19v53a9 9 0 0 1-9 9H43a9 9 0 0 1-9-9V29a9 9 0 0 1 9-9Z" fill="url(#paper)"/>
+  <path d="M74 20v14a5 5 0 0 0 5 5h14Z" fill="#c7d2ff"/>
+  <path d="M46 41h17M46 52h30M46 63h11" fill="none" stroke="#8295c8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="77" cy="77" r="23" fill="#f5fffd" stroke="#263c7d" stroke-width="7"/>
+  <path d="m94 94 15 15" fill="none" stroke="#263c7d" stroke-width="12" stroke-linecap="round"/>
+  <path d="m97 97 12 12" fill="none" stroke="#8aead7" stroke-width="7" stroke-linecap="round"/>
+  <path d="M65 69h17" fill="none" stroke="#9cacc7" stroke-width="3" stroke-linecap="round"/>
+  <rect x="63" y="77" width="28" height="10" rx="4" fill="#8aead7"/>
+  <path d="M68 82h17" fill="none" stroke="#248c80" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
