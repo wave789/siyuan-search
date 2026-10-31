@@ -1,6 +1,6 @@
 {
   "name": "siyuan-search",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": true,
   "type": "module",
   "description": "PyCharm-style in-document and workspace search for SiYuan",
@@ -8,9 +8,10 @@
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "check": "tsc --noEmit",
+    "check:package": "python3 scripts/check-package.py",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs",
-    "package": "npm run check && npm run test && npm run build && python3 scripts/package.py"
+    "package": "npm run check && npm run test && npm run build && python3 scripts/package.py && npm run check:package"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

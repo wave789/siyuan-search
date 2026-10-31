@@ -1,9 +1,13 @@
 import { build, context } from 'esbuild';
-import { mkdir, cp, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, cp, writeFile, readFile, rm } from 'node:fs/promises';
 const worker = await build({ entryPoints: ['src/search/worker.ts'], bundle: true, write: false, format: 'iife', target: 'es2022', minify: true });
 const manifest = JSON.parse(await readFile('plugin.json', 'utf8'));
+// Rebuild generated files from scratch so deleted resources cannot linger in a release.
+await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
-for (const name of ['plugin.json', 'README.md', 'VALIDATION.md', 'LICENSE', 'i18n', 'icon.png', 'icon.svg']) {
+const resources = new Set(['plugin.json', 'VALIDATION.md', 'LICENSE', 'CHANGELOG.md', 'i18n', 'icon.svg', 'assets',
+  ...Object.values(manifest.readme), ...[manifest.icon, manifest.preview].filter(Boolean)]);
+for (const name of resources) {
   await cp(name, `dist/${name}`, { recursive: true });
 }
 // SiYuan loads the CommonJS entry without a package.json. Keep the dist folder CommonJS.

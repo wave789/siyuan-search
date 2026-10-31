@@ -5,4 +5,4 @@ artifacts/
 *.log
 .DS_Store
 .idea
-
+package/

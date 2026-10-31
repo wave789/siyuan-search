@@ -1,9 +1,9 @@
 {
   "name": "siyuan-search",
-  "author": "siyuan-search",
-  "url": "",
-  "version": "1.5.1",
-  "minAppVersion": "3.1.15",
+  "author": "wave789",
+  "url": "https://github.com/wave789/siyuan-search",
+  "version": "1.5.2",
+  "minAppVersion": "3.8.0",
   "backends": [
     "windows",
     "linux",
@@ -18,16 +18,15 @@
   "disabledInPublish": true,
   "displayName": {
     "default": "IDE Search",
-    "zh_CN": "IDE 搜索",
     "zh-CN": "IDE 搜索"
   },
   "description": {
     "default": "PyCharm-style find and replace in documents and workspaces, with case, whole word and regular expressions.",
-    "zh_CN": "像 PyCharm 一样查找与替换笔记：页内及全局替换、大小写、整词、正则和替换撤销。",
     "zh-CN": "像 PyCharm 一样查找与替换笔记：页内及全局替换、大小写、整词、正则和替换撤销。"
   },
   "readme": {
-    "default": "README.md"
+    "default": "README.md",
+    "zh-CN": "README.md"
   },
   "keywords": [
     "search",
@@ -37,5 +36,9 @@
     "正则",
     "PyCharm"
   ],
-  "icon": "icon.png"
+  "icon": "icon.png",
+  "preview": "preview.png",
+  "funding": {
+    "custom": ["https://github.com/wave789/siyuan-search/blob/main/assets/wechat-reward.png"]
+  }
 }
