@@ -51,13 +51,18 @@ function fixture(){
   document.fixture=state;scroller.scrollTop=500;scroller.scrollLeft=80;
   state.find=async(texts,query,options,signal,limit)=>{state.findStarted?.();if(state.defer)await state.defer;if(signal.aborted)throw new DOMException('Aborted','AbortError');return matchTexts(texts,query,options,limit)};
   globalThis.__originFixture=state;globalThis.document=document;
-  globalThis.window={getSelection:()=>({removeAllRanges(){state.selectionRanges=[]},addRange(value){state.selectionRanges.push(value)}})};
-  globalThis.MutationObserver=class{observe(){}disconnect(){}};globalThis.DOMParser=class{parseFromString(){return {body:root}}};
+  globalThis.window={getSelection:()=>({get rangeCount(){return state.selectionRanges.length},getRangeAt(index){return state.selectionRanges[index]},removeAllRanges(){state.selectionRanges=[]},addRange(value){state.selectionRanges.push(value)}})};
+  globalThis.MutationObserver=class{constructor(callback){state.observer=this;this.callback=callback}observe(){}disconnect(){}};globalThis.DOMParser=class{parseFromString(){return {body:root}}};
   const editor={element:root,block:{rootID:'doc'},wysiwyg:{element:wysiwyg}};
   const host={options:{...DEFAULT_OPTIONS},changed(){},remember(){},openGlobal(){},replacements:{canUndo:false,busy:false,subscribe:()=>()=>{}},reveal:async id=>{state.reveals.push(id);return editor}};
   let search;
   return {state,document,blocks,root,editor,
     origin:(block=1,start=4,end=7)=>captureSearchOrigin(root,'doc',range(blocks[block].parts[0].node,start,end)),
+    edit(blockIndex,text,offset){
+      const block=blocks[blockIndex];block.text=text;block.parts[0].node.data=text;block.parts[0].end=text.length;
+      const caret=range(block.parts[0].node,offset,offset);state.selectionRanges=[caret];document.activeElement=wysiwyg;
+      state.observer.callback();return caret;
+    },
     open(origin,query='cat'){search=new LocalSearch(editor,host,query,origin);search.scrollToActive=force=>{state.scrollCalls.push(force);return true};return search},
     close(){search?.close();for(const [key,value]of saved){if(value===undefined)delete globalThis[key];else globalThis[key]=value}},
   };
@@ -118,5 +123,47 @@ test('typing a new query leaves opening preservation and uses normal live search
   const f=fixture();try{
     const search=f.open(f.origin());await ready(search);search.input.value='ca';search.input.dispatchEvent(new Event('input'));await ready(search);
     assert.equal(f.state.scrollCalls.length,1);assert.equal(search.returnSelection,undefined);
+  }finally{f.close()}
+});
+
+test('deleting the second occurrence refreshes matches without scrolling or moving the caret, including Escape',async()=>{
+  const f=fixture();try{
+    const origin=f.origin(1,0,3),search=f.open(origin);await ready(search);assert.equal(search.active,1);
+    const caret=f.edit(1,' cat',0);await ready(search);
+    assert.equal(search.hits.length,2);assert.deepEqual(f.state.scrollCalls,[]);assert.deepEqual(f.state.reveals,[]);
+    assert.equal(f.state.selectionRanges[0],caret);assert.equal(f.document.activeElement,f.editor.wysiwyg.element);
+    assert.equal(f.state.scroller.scrollTop,500);assert.equal(f.state.scroller.scrollLeft,80);
+    search.close(true);const returned=f.state.selectionRanges[0];
+    assert.equal(returned.startContainer,caret.startContainer);assert.equal(returned.startOffset,0);assert.equal(returned.endOffset,0);assert.notEqual(returned,origin.selection);
+    assert.equal(f.state.scroller.scrollTop,500);assert.equal(f.state.scroller.scrollLeft,80);
+  }finally{f.close()}
+});
+
+test('removing every match from the edited block does not reveal a remaining match in an earlier unloaded block',async()=>{
+  const f=fixture();try{
+    const search=f.open(f.origin());await ready(search);
+    search.scrollToActive=force=>{f.state.scrollCalls.push(force);return false};
+    const caret=f.edit(1,'',0);await ready(search);await Promise.resolve();
+    assert.equal(search.hits.length,1);assert.equal(search.hits[0].blockId,'p1');assert.deepEqual(f.state.scrollCalls,[]);assert.deepEqual(f.state.reveals,[]);
+    assert.equal(f.document.activeElement,f.editor.wysiwyg.element);assert.equal(f.state.selectionRanges[0],caret);
+    assert.equal(f.state.scroller.scrollTop,500);assert.equal(f.state.scroller.scrollLeft,80);
+  }finally{f.close()}
+});
+
+test('an asynchronous edit refresh preserves later manual scrolling and subsequent explicit navigation still works',async()=>{
+  const f=fixture();try{
+    const search=f.open(f.origin());await ready(search);
+    let release,started;f.state.defer=new Promise(resolve=>{release=resolve});const finding=new Promise(resolve=>{started=resolve});f.state.findStarted=started;
+    const caret=f.edit(1,'cat ',4);await finding;f.state.scroller.scrollTop=950;f.state.scroller.scrollLeft=160;
+    release();await ready(search);assert.deepEqual(f.state.scrollCalls,[]);assert.equal(f.state.scroller.scrollTop,950);assert.equal(f.state.scroller.scrollLeft,160);assert.equal(f.state.selectionRanges[0],caret);
+    await search.move(1);assert.deepEqual(f.state.scrollCalls,[true]);
+    search.input.value='ca';search.input.dispatchEvent(new Event('input'));await ready(search);assert.deepEqual(f.state.scrollCalls,[true,false]);
+  }finally{f.close()}
+});
+
+test('an explicit global-result target still reveals its match when background document mutations refresh the pending search',async()=>{
+  const f=fixture();try{
+    const search=f.open();search.focusMatch('p2',{start:4,end:7});f.state.observer.callback();await ready(search);
+    assert.equal(search.active,2);assert.deepEqual(f.state.scrollCalls,[false]);assert.equal(f.state.highlight.startOffset,4);
   }finally{f.close()}
 });

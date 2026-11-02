@@ -49,6 +49,8 @@ export class LocalSearch {
   private requestedHit?: SearchAnchor;
   private pendingOrigin?: SearchOrigin;
   private returnSelection?: Range;
+  private refreshOnly = false;
+  private explicitFocus = false;
 
   constructor(editor: IProtyle, private readonly host: LocalHost, query: string, origin?: SearchOrigin) {
     this.editor = editor;
@@ -84,13 +86,23 @@ export class LocalSearch {
       if (event.key === "Enter" && event.target === this.input) { event.preventDefault(); event.stopPropagation(); void this.move(event.shiftKey ? -1 : 1); }
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.close(true); }
     });
-    this.observer = new MutationObserver(() => { this.saved = undefined; this.schedule(250); });
+    this.observer = new MutationObserver(() => {
+      this.saved = undefined;
+      // Editing can remove the active hit. Refresh its marks without navigating to another hit.
+      const focus = document.activeElement, selection = window.getSelection();
+      if (focus && this.editor.element.contains(focus) && !this.element.contains(focus)) {
+        this.clearOrigin(); this.explicitFocus = false;
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+        if (range && this.editor.element.contains(range.startContainer) && this.editor.element.contains(range.endContainer)) this.returnSelection = range.cloneRange();
+      }
+      this.schedule(250, true);
+    });
     this.attach(editor);
     this.setQuery(query, origin);
   }
 
   get protyle(): IProtyle { return this.editor; }
-  focusMatch(blockId: string, match: TextMatch): void { this.clearOrigin(); this.requestedHit = { blockId, ...match }; }
+  focusMatch(blockId: string, match: TextMatch): void { this.clearOrigin(); this.requestedHit = { blockId, ...match }; this.explicitFocus = true; }
   get isOpen(): boolean { return !this.disposed && this.element.isConnected; }
 
   setQuery(query?: string, origin?: SearchOrigin): void {
@@ -120,10 +132,12 @@ export class LocalSearch {
     this.schedule(0);
   }
 
-  private schedule(delay = 120): void {
+  private schedule(delay = 120, refreshOnly = false): void {
     clearTimeout(this.timer);
     this.controller?.abort();
     if (this.disposed || this.replacing) return;
+    this.refreshOnly = refreshOnly;
+    if (!refreshOnly) this.explicitFocus = false;
     this.searchReady = false;
     const current = this.hits[this.active];
     if (current && !this.requestedHit) this.requestedHit = current;
@@ -164,14 +178,15 @@ export class LocalSearch {
       this.truncated = result.truncated;
       this.searchReady = true;
       const requested = this.requestedHit;
-      const preserveViewport = !!this.pendingOrigin;
+      const preserveViewport = !!this.pendingOrigin || (this.refreshOnly && !this.explicitFocus);
       this.active = anchoredHitIndex(this.hits, requested);
       this.requestedHit = undefined;
       this.pendingOrigin = undefined;
+      this.explicitFocus = false;
       this.message(warning || this.feedback || (result.truncated ? "匹配超过 10,000 处，请缩小搜索条件。" : ""));
       this.updateHighlights();
       this.updateCounter();
-      // Opening find preserves the note's selection and viewport. Subsequent searches may reveal hits.
+      // Opening find and passive document refreshes preserve the current editing position.
       if (!preserveViewport && this.active >= 0 && !this.scrollToActive(false)) void this.move(0);
     } catch (error) {
       if (controller.signal.aborted || isAbort(error) || this.disposed) return;

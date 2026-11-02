@@ -252,7 +252,8 @@ test('scope, stale searches, keyboard focus trap and shortcut preference',async(
     await page.waitForFunction(()=>document.querySelector('.syp-summary')?.textContent==='0 处匹配 · 0 篇文档');
     assert.equal(await page.locator('.syp-result').count(),0);
     const first=page.locator('.syp-dialog-header button');await first.focus();await page.keyboard.press('Shift+Tab');
-    assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.syp-results')),true);
+    assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.syp-open-find-window')),true);
+    await page.keyboard.press('Tab');assert.equal(await first.evaluate(node=>node===document.activeElement),true);
     await page.keyboard.press('Escape');
     await page.evaluate(()=>{const input=window.plugin.setting.items[0].actionElement;input.checked=false;input.dispatchEvent(new Event('change'))});
     await page.keyboard.press('Control+f');assert.equal(await page.locator('.syp-searchbar').count(),0);
@@ -331,7 +332,8 @@ test('local arrow expands replacement; single, whole-document all and undo persi
     await page.locator('.syp-searchbar .syp-replacement-input').fill('Found');
     await page.locator('.syp-searchbar .syp-replace-row').getByRole('button',{name:'替换当前匹配',exact:true}).click();
     await counter(page,'1 / 7');assert.equal(await page.locator('#editor-a .protyle-title__input').textContent(),'Found handbook');
-    await page.locator('.syp-searchbar .syp-undo-replace').click();await counter(page,'1 / 8');
+    await page.locator('.syp-searchbar .syp-undo-replace').click();await counter(page,'2 / 8');
+    assert.equal(await page.evaluate(()=>Array.from(CSS.highlights.get('syp-search-active'))[0].startContainer.parentElement.closest('[data-node-id]').dataset.nodeId),id(1));
     await page.locator('.syp-searchbar .syp-replace-row').getByRole('button',{name:'替换当前搜索范围内的全部匹配',exact:true}).click();
     await counter(page,'无匹配');
     assert.match(await page.locator('.syp-local-status').textContent(),/已替换 8/);
@@ -404,10 +406,11 @@ test('Ctrl+Shift+F and Escape preserve a note below the fold, its selection and 
         const editable=document.querySelector('#editor-a .protyle-wysiwyg');
         const paragraph=editable.querySelector(`[data-node-id="${id}"]`);paragraph.scrollIntoView({block:'center'});
         editable.focus({preventScroll:true});
-        const range=document.createRange();range.setStart(paragraph.firstChild,2);range.setEnd(paragraph.firstChild,collapsed?2:8);
+        const text=paragraph.querySelector('[contenteditable]').firstChild;
+        const range=document.createRange();range.setStart(text,2);range.setEnd(text,collapsed?2:8);
         const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
         const scroll=document.querySelector('#editor-a .protyle-content');scroll.scrollLeft=140;
-        window.expectedReturnNode=paragraph.firstChild;
+        window.expectedReturnNode=text;
         return {top:scroll.scrollTop,left:scroll.scrollLeft,start:range.startOffset,end:range.endOffset,text:selection.toString()};
       },{id:id(2),collapsed});
       assert.ok(original.top>1000);assert.ok(original.left>0);
@@ -518,6 +521,30 @@ test('Ctrl+F uses the selected duplicate inside one block and Escape restores th
     await page.keyboard.press('Escape');
     assert.deepEqual(await page.evaluate(()=>{const selection=getSelection(),r=selection.getRangeAt(0);return {text:selection.toString(),start:r.startOffset,end:r.endOffset}}),{text:'search',start:7,end:13});
     assert.deepEqual(errors,[]);
+  }finally{await page.close()}
+});
+
+test('deleting a selected local match below the fold keeps the caret and viewport after refresh and Escape',async()=>{
+  const {page,errors}=await setup();
+  try{
+    await page.evaluate(({first,second,tail,id})=>{
+      const editor=document.querySelector('#editor-a .protyle-wysiwyg');editor.innerHTML=first+second+tail;
+      const block=editor.querySelector(`[data-node-id="${id}"]`);block.style.marginTop='1600px';editor.lastElementChild.style.minHeight='900px';
+      const text=block.querySelector('[contenteditable]');text.focus({preventScroll:true});const range=document.createRange();range.setStart(text.firstChild,0);range.setEnd(text.firstChild,6);
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);block.scrollIntoView({block:'center'});
+    },{first:paragraph(1,'needle first'),second:paragraph(2,'needle second'),tail:paragraph(3,'tail'),id:id(2)});
+    await page.keyboard.press('Control+f');await counter(page,'2 / 2');
+    await page.evaluate(({id})=>{
+      const text=document.querySelector(`#editor-a [data-node-id="${id}"] [contenteditable]`);text.focus({preventScroll:true});
+      const range=document.createRange();range.setStart(text.firstChild,0);range.setEnd(text.firstChild,6);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    },{id:id(2)});
+    await page.keyboard.press('Backspace');
+    const before=await page.evaluate(()=>{const view=document.querySelector('#editor-a .protyle-content'),range=getSelection().getRangeAt(0);window.deletedCaretNode=range.startContainer;return {top:view.scrollTop,left:view.scrollLeft,start:range.startOffset,end:range.endOffset}});
+    assert.ok(before.top>1000);assert.equal(before.start,before.end);await counter(page,'1 / 1');
+    const position=()=>page.evaluate(()=>{const view=document.querySelector('#editor-a .protyle-content'),range=getSelection().getRangeAt(0);return {top:view.scrollTop,left:view.scrollLeft,start:range.startOffset,end:range.endOffset,sameNode:range.startContainer===window.deletedCaretNode}});
+    const after=await position();assert.deepEqual(after,{...before,sameNode:true});assert.equal(await page.evaluate(()=>window.lastOpened),undefined);
+    assert.equal(await page.evaluate(()=>CSS.highlights.get('syp-search-all').size),1);
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.syp-searchbar').count(),0);assert.deepEqual(await position(),{...before,sameNode:true});assert.deepEqual(errors,[]);
   }finally{await page.close()}
 });
 
