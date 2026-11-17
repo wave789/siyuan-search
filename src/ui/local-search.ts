@@ -35,7 +35,8 @@ export class LocalSearch {
   private replacing = false;
   private searchReady = false;
   private feedback = "";
-  private readonly highlighter = new SearchHighlighter();
+  private readonly highlighter = new SearchHighlighter("syp-search", () => this.editor.contentElement || this.editor.wysiwyg?.element.closest<HTMLElement>(".protyle-content") || this.editor.element,
+    { overlay: true, overlayZIndex: 3 });
   private readonly observer: MutationObserver;
   private editor: IProtyle;
   private saved?: DocumentBlock[];
@@ -171,7 +172,7 @@ export class LocalSearch {
         }
       }
       if (controller.signal.aborted || this.disposed) return;
-      const blocks = mergeBlocks(this.saved || [], liveBlocks(editor.element, rootId));
+      const blocks = mergeBlocks(this.saved || [], liveBlocks(editor.element, rootId, editor.wysiwyg?.element));
       const result = await searchTexts(blocks.map(block => block.text), query, { ...this.host.options }, controller.signal);
       if (controller.signal.aborted || this.disposed) return;
       this.hits = result.blocks.flatMap(block => block.matches.map(match => ({ ...match, blockId: blocks[block.index].id, text: blocks[block.index].text })));
@@ -208,7 +209,7 @@ export class LocalSearch {
   }
 
   private updateHighlights(): void {
-    const blocks = new Map(liveBlocks(this.editor.element, this.editor.block.rootID || "").map(block => [block.id, block]));
+    const blocks = new Map(liveBlocks(this.editor.element, this.editor.block.rootID || "", this.editor.wysiwyg?.element).map(block => [block.id, block]));
     const ranges: Range[] = [];
     let active: Range | undefined;
     this.hits.forEach((hit, index) => {
@@ -222,7 +223,7 @@ export class LocalSearch {
   private scrollToActive(force: boolean): boolean {
     const hit = this.hits[this.active];
     if (!hit) return false;
-    const block = liveBlocks(this.editor.element, this.editor.block.rootID || "").find(item => item.id === hit.blockId);
+    const block = liveBlocks(this.editor.element, this.editor.block.rootID || "", this.editor.wysiwyg?.element).find(item => item.id === hit.blockId);
     const range = block && matchRange(block, hit);
     if (!range || !block?.element || block.element.getClientRects().length === 0) return false;
     const rect = range.getBoundingClientRect();
@@ -331,7 +332,7 @@ export class LocalSearch {
     this.element.remove();
     if (restoreFocus && this.editor.element.isConnected) {
       const hit = this.hits[this.active];
-      const block = hit && liveBlocks(this.editor.element, this.editor.block.rootID || "").find(item => item.id === hit.blockId);
+      const block = hit && liveBlocks(this.editor.element, this.editor.block.rootID || "", this.editor.wysiwyg?.element).find(item => item.id === hit.blockId);
       const original = this.returnSelection;
       const range = original && original.startContainer.isConnected && original.endContainer.isConnected &&
         this.editor.element.contains(original.startContainer) && this.editor.element.contains(original.endContainer) ? original : block && matchRange(block, hit);

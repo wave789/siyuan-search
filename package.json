@@ -1,6 +1,6 @@
 {
   "name": "siyuan-search",
-  "version": "1.5.3",
+  "version": "1.5.6",
   "private": true,
   "type": "module",
   "description": "PyCharm-style in-document and workspace search for SiYuan",

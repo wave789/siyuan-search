@@ -20,7 +20,7 @@ export function createReplacementBackend(getEditors: () => IProtyle[]): Replacem
     for (const editor of getEditors().filter(editor => editor.block.rootID === source.target.root && editor.element.isConnected)) {
       // Read-only search/backlink previews can show a different fragment of the same document.
       if (editor.disabled) continue;
-      const live = liveBlocks(editor.element, source.target.root).find(block => block.id === source.target.id);
+      const live = liveBlocks(editor.element, source.target.root, editor.wysiwyg?.element).find(block => block.id === source.target.id);
       if (live && live.text !== source.text) throw new Error("编辑器中存在尚未保存或正在同步的内容，请稍后刷新搜索再重试。");
     }
   };
@@ -71,7 +71,7 @@ export function createReplacementBackend(getEditors: () => IProtyle[]): Replacem
         const texts = new Map(saved.map(block => [block.id, block.text]));
         texts.set(scope.root, attrs.title || "");
         for (const editor of getEditors().filter(editor => editor.block.rootID === scope.root && !editor.disabled)) {
-          for (const live of liveBlocks(editor.element, scope.root)) if (texts.get(live.id) !== live.text) {
+          for (const live of liveBlocks(editor.element, scope.root, editor.wysiwyg?.element)) if (texts.get(live.id) !== live.text) {
             throw new Error("编辑器中有尚未保存的内容，请稍后重试全部替换。");
           }
         }

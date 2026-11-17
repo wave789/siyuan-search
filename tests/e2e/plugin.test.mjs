@@ -108,6 +108,8 @@ async function setup({catastrophic=false,longPreview=false,popupFirst=true,close
     await route.fulfill({contentType:'application/json',body:JSON.stringify({code:0,msg:'',data:result})});
   });
   await page.goto('http://siyuan.test/');
+  // Model SiYuan's temporary full-block navigation decoration separately from text highlights.
+  await page.addStyleTag({content:'.protyle-wysiwyg--hl { position: relative; } .protyle-wysiwyg--hl::after { content: ""; position: absolute; inset: 0; background: #5576d830; pointer-events: none; }'});
   await page.addStyleTag({content:css});
   await page.addScriptTag({content:documentBundle.outputFiles[0].text});
   await page.evaluate(({rootA,rootB,bodies,popupFirst,closeTreeOnOutside})=>{
@@ -133,7 +135,7 @@ async function setup({catastrophic=false,longPreview=false,popupFirst=true,close
     class Plugin {name='siyuan-search';app={};commands=[];eventBus=new EventBus();data={};i18n={};loadData(){return Promise.resolve(popupFirst===null?undefined:{popupFirst,closeTreeOnOutside})}saveData(key,value){window.savedPreferences=JSON.parse(JSON.stringify(value));return Promise.resolve()}addIcons(svg){window.pluginIcons=svg}addCommand(command){this.commands.push(command)}addTopBar(item){window.topBar=item;return document.createElement('button')} }
     class Setting {items=[];addItem(item){this.items.push(item)}}
     class Menu {addItem(){}open(){}}
-    window.previewReaders=[];
+    window.previewReaders=[];window.nativeBlockHighlightRequests=[];
     // This host adapter exercises plugin integration; it does not replace real SiYuan rendering tests.
     class Protyle {constructor(){window.previewReaders.push({destroyed:false});throw new Error('Search preview must not create a native editor')}}
     const ProtyleMethod={highlightRender(){window.hljs={getLanguage:language=>language==='python',highlight:text=>({value:text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replace(/\bdef\b/g,'<span class="hljs-keyword">def</span>')})}}};
@@ -148,6 +150,11 @@ async function setup({catastrophic=false,longPreview=false,popupFirst=true,close
           editor.protyle.wysiwyg.element.innerHTML=block?.outerHTML||'';
         }
         Object.assign(editor.protyle.block,{mode:doc.action?.includes('cb-get-context')?3:0,action:doc.action});
+      }
+      if(doc.action?.includes('cb-get-hl')){
+        window.nativeBlockHighlightRequests.push(doc.id);
+        const block=editor.protyle.element.querySelector(`[data-node-id="${doc.id}"]`);
+        block?.classList.add('protyle-wysiwyg--hl');setTimeout(()=>block?.classList.remove('protyle-wysiwyg--hl'),2000);
       }
       window.lastOpened=doc.id;
       window.lastOpenOptions=JSON.parse(JSON.stringify(doc));
@@ -231,6 +238,7 @@ test('global search pages past 500 blocks, previews safe text and opens exact oc
     assert.equal(await page.evaluate(()=>window.lastOpened),'20260102000001-bbbbbbb');
     assert.equal(await page.evaluate(()=>window.lastOpenOptions.zoomIn),false);
     assert.ok(await page.evaluate(()=>window.lastOpenOptions.action.includes('cb-get-context')));
+    assert.deepEqual(await page.evaluate(()=>window.nativeBlockHighlightRequests),[]);
     assert.equal(await page.locator('#editor-b [data-node-id="20260102000002-bbbbbbb"]').count(),1);
     await counter(page,'2 / 3');
     assert.equal(await page.evaluate(()=>Array.from(CSS.highlights.get('syp-search-active'))[0].startOffset),14);
@@ -545,6 +553,118 @@ test('deleting a selected local match below the fold keeps the caret and viewpor
     const after=await position();assert.deepEqual(after,{...before,sameNode:true});assert.equal(await page.evaluate(()=>window.lastOpened),undefined);
     assert.equal(await page.evaluate(()=>CSS.highlights.get('syp-search-all').size),1);
     await page.keyboard.press('Escape');assert.equal(await page.locator('.syp-searchbar').count(),0);assert.deepEqual(await position(),{...before,sameNode:true});assert.deepEqual(errors,[]);
+  }finally{await page.close()}
+});
+
+test('Chinese matches in the document body remain highlighted with a nested rich-title editor',async()=>{
+  const {page,errors}=await setup();
+  const html=paragraph(1,'第一次检查，确认位置。')+paragraph(2,'第二次<strong>检</strong>查，保留格式。')+
+    `<div data-node-id="${id(4)}" data-type="NodeCodeBlock"><div contenteditable="true" style="white-space: pre; font-family: monospace"># 第三次检查\nprint("ok")</div></div>`;
+  try{
+    await page.route('**/api/block/getBlockDOM',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({code:0,msg:'',data:{dom:html}})}));
+    await page.evaluate(({html,rootA})=>{
+      window.noteBodies[rootA]=html;
+      const editor=window.editors[0].protyle;
+      editor.wysiwyg.element.innerHTML=html;
+      const title=editor.element.querySelector('.protyle-title__input');
+      title.contentEditable='false';title.classList.add('protyle-title__rich');
+      title.innerHTML='<div class="protyle"><div class="protyle-content"><div class="protyle-wysiwyg"><div data-node-id="rich-title-fragment"><div contenteditable="true">中文高亮回归</div></div></div></div></div>';
+      editor.wysiwyg.element.querySelector('[contenteditable]').focus({preventScroll:true});
+    },{html,rootA});
+    await page.keyboard.press('Control+f');await page.locator('.syp-searchbar .syp-query-input').fill('检查');await counter(page,'1 / 3');
+    assert.equal(await page.evaluate(()=>CSS.highlights.get('syp-search-all')?.size),3);
+    assert.deepEqual(await page.evaluate(()=>Array.from(CSS.highlights.get('syp-search-all')).map(range=>range.toString())),['检查','检查','检查']);
+    assert.deepEqual(await page.evaluate(root=>window.DocumentSearch.liveBlocks(window.editors[0].protyle.element,root).map(block=>block.id),rootA),[rootA,id(1),id(2),id(4)]);
+    await page.waitForFunction(()=>document.querySelectorAll('.syp-highlight').length>=3);
+    await mkdir('artifacts',{recursive:true});await page.screenshot({path:'artifacts/find-highlight-chinese.png',caret:'hide'});
+    await page.evaluate(({rootA,target})=>{
+      const editor=window.editors[0].protyle,block=window.DocumentSearch.liveBlocks(editor.element,rootA).find(block=>block.id===target);
+      const range=window.DocumentSearch.matchRange(block,{start:3,end:5});
+      block.element.querySelector('[contenteditable]').focus({preventScroll:true});
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    },{rootA,target:id(2)});
+    await page.keyboard.press('Control+f');await counter(page,'2 / 3');
+    for(const expected of ['3 / 3','1 / 3','2 / 3']){
+      await page.keyboard.press('Enter');await counter(page,expected);
+      assert.equal(await page.evaluate(()=>Array.from(CSS.highlights.get('syp-search-active'))[0]?.toString()),'检查');
+    }
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.syp-highlight-overlay').count(),0);assert.deepEqual(errors,[]);
+  }finally{await page.close()}
+});
+
+test('find jumps to unloaded paragraph and code matches without flashing the whole block',async()=>{
+  for(const code of [false,true]){
+    const {page,errors}=await setup({longPreview:code});
+    const target=code?'20260102000001-bbbbbbb':id(3),query=code?'first':'Next',editorId=code?'editor-b':'editor-a';
+    try{
+      // Reproduce a registered native Highlight whose text decoration does not paint.
+      await page.addStyleTag({content:'::highlight(syp-search-all), ::highlight(syp-search-active) { background-color: transparent; color: inherit; text-decoration: none; }'});
+      if(code)await page.addStyleTag({content:'[data-type="NodeCodeBlock"] > [contenteditable] { white-space: pre; font: 14px/1.6 monospace; overflow: auto; }'});
+      await page.evaluate(({editorId,target})=>{
+        const editor=document.getElementById(editorId);
+        for(const item of document.querySelectorAll('.protyle'))item.classList.toggle('fn__none',item!==editor);
+        editor.querySelector(`[data-node-id="${target}"]`)?.remove();
+        editor.querySelector('.protyle-title__input').focus({preventScroll:true});
+      },{editorId,target});
+      await page.keyboard.press('Control+f');await page.locator('.syp-searchbar .syp-query-input').fill(query);
+      await counter(page,'1 / 1');
+      await page.waitForFunction(({target,query})=>window.lastOpened===target&&Array.from(CSS.highlights.get('syp-search-active')||[])[0]?.toString()===query,{target,query});
+      assert.equal(await page.locator(`#${editorId} [data-node-id="${target}"]`).count(),1);
+      assert.deepEqual(await page.evaluate(()=>window.nativeBlockHighlightRequests),[]);
+      assert.equal(await page.locator('.protyle-wysiwyg--hl').count(),0);
+      assert.equal(await page.evaluate(()=>window.lastOpenOptions.action.includes('cb-get-hl')),false);
+      assert.deepEqual(await page.evaluate(()=>Array.from(CSS.highlights.get('syp-search-all')).map(range=>range.toString())),[query]);
+      assert.equal(await page.evaluate(()=>window.lastOpenOptions.zoomIn),false);
+      await page.waitForFunction(()=>{
+        const range=Array.from(CSS.highlights.get('syp-search-active')||[])[0],marker=document.querySelector('.syp-highlight--active');
+        if(!range||!marker)return false;
+        const a=range.getBoundingClientRect(),b=marker.getBoundingClientRect();
+        return Math.abs(a.left-b.left)<1&&Math.abs(a.top-b.top)<1&&Math.abs(a.width-b.width)<1&&Math.abs(a.height-b.height)<1;
+      });
+      const regions=await page.evaluate(()=>{
+        const range=Array.from(CSS.highlights.get('syp-search-active'))[0],suffix=range.cloneRange();
+        suffix.setStart(range.endContainer,range.endOffset);suffix.setEnd(range.endContainer,range.endOffset+7);
+        const clip=r=>{const b=r.getBoundingClientRect();return {x:Math.floor(b.left),y:Math.floor(b.top),width:Math.ceil(b.width),height:Math.ceil(b.height)}};
+        return {match:clip(range),unmatched:clip(suffix)};
+      });
+      const painted=await page.screenshot({clip:regions.match,caret:'hide'});
+      const unmatched=await page.screenshot({clip:regions.unmatched,caret:'hide'});
+      await mkdir('artifacts',{recursive:true});await page.screenshot({path:`artifacts/find-highlight-${code?'code':'paragraph'}.png`,caret:'hide'});
+      const hidden=await page.addStyleTag({content:'.syp-highlight-overlay { visibility: hidden !important; }'});
+      assert.notDeepEqual(await page.screenshot({clip:regions.match,caret:'hide'}),painted,'Matching characters must have a visibly painted background');
+      assert.deepEqual(await page.screenshot({clip:regions.unmatched,caret:'hide'}),unmatched,'Unmatched text must retain its original appearance');
+      await hidden.evaluate(node=>node.remove());
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('.syp-highlight-overlay').count(),0);assert.deepEqual(errors,[]);
+    }finally{await page.close()}
+  }
+});
+
+test('local character overlays follow nested code scrolling, viewport resizing, navigation and query cleanup',async()=>{
+  const {page,errors}=await setup();
+  try{
+    await page.addStyleTag({content:'::highlight(syp-search-all), ::highlight(syp-search-active) { background-color: transparent; color: inherit; text-decoration: none; }'});
+    await page.evaluate(()=>{
+      const code=document.querySelector('[data-type="NodeCodeBlock"] [contenteditable]');
+      code.textContent='start needle needle '+('tail '.repeat(100));
+      Object.assign(code.style,{whiteSpace:'pre',overflow:'auto',width:'180px',font:'16px monospace'});
+      code.focus({preventScroll:true});
+    });
+    await page.keyboard.press('Control+f');await page.locator('.syp-searchbar .syp-query-input').fill('needle');await counter(page,'1 / 2');
+    const aligned=()=>page.waitForFunction(()=>{
+      const range=Array.from(CSS.highlights.get('syp-search-active')||[])[0],marker=document.querySelector('.syp-highlight--active');
+      if(!range||!marker)return false;
+      const code=document.querySelector('[data-type="NodeCodeBlock"] [contenteditable]'),r=range.getBoundingClientRect(),m=marker.getBoundingClientRect(),c=code.getBoundingClientRect();
+      return Math.abs(m.left-Math.max(r.left,c.left))<1&&Math.abs(m.right-Math.min(r.right,c.right))<1&&Math.abs(m.top-r.top)<1;
+    });
+    await aligned();assert.equal(await page.locator('.syp-highlight').count(),2);
+    await page.evaluate(()=>document.querySelector('[data-type="NodeCodeBlock"] [contenteditable]').scrollLeft=70);
+    await aligned();
+    await page.setViewportSize({width:1120,height:800});await aligned();
+    await page.keyboard.press('Enter');await counter(page,'2 / 2');await aligned();
+    await page.locator('.syp-searchbar .syp-query-input').fill('');await counter(page,'输入以搜索');
+    assert.equal(await page.locator('.syp-highlight-overlay').count(),0);
+    await page.keyboard.press('Escape');assert.deepEqual(errors,[]);
   }finally{await page.close()}
 });
 

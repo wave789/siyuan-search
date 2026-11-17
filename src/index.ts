@@ -207,8 +207,8 @@ export default class IdeSearchPlugin extends Plugin {
     this.revealing++;
     try {
       const open = async (): Promise<IProtyle> => {
-        // A block ID without context can render only that block. Keep native document scrolling.
-        const tab = await openTab({ app: this.app, doc: { id, action: ["cb-get-context", "cb-get-hl", "cb-get-focus"], zoomIn: false }, keepCursor: false });
+        // Keep the complete document; SearchHighlighter paints the match without native block flash.
+        const tab = await openTab({ app: this.app, doc: { id, action: ["cb-get-context", "cb-get-focus"], zoomIn: false }, keepCursor: false });
         const tabEditor = (tab?.model as unknown as { editor?: { protyle: IProtyle } } | undefined)?.editor?.protyle;
         return this.waitForEditor(() => {
           const candidates = [tabEditor, preferred, ...getAllEditor().map(item => item.protyle)];

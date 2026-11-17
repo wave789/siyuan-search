@@ -37,8 +37,14 @@ export function readBlocks(container: HTMLElement): DocumentBlock[] {
     .map(element => readBlock(element, element.dataset.nodeId!));
 }
 
-export function liveBlocks(editor: HTMLElement, rootId: string): DocumentBlock[] {
-  const content = editor.querySelector<HTMLElement>(".protyle-wysiwyg");
+export function liveBlocks(editor: HTMLElement, rootId: string, preferred?: HTMLElement): DocumentBlock[] {
+  // Since 3.8.10 a rich title contains its own Protyle before the document body.
+  // Prefer the SDK's body element; DOM-only callers must skip nested editors.
+  const content = preferred && editor.contains(preferred) ? preferred :
+    Array.from(editor.querySelectorAll<HTMLElement>(".protyle-wysiwyg")).find(element => {
+      const owner = element.closest(".protyle");
+      return !element.closest(".protyle-title__rich") && (!owner || owner === editor);
+    });
   const blocks = content ? readBlocks(content) : [];
   const title = editor.querySelector<HTMLElement>(".protyle-title__input");
   if (title) blocks.unshift(readBlock(title, rootId));

@@ -26,3 +26,27 @@ test('fallback preview overlays are above the dialog and clipped to the visible 
     assert.deepEqual(overlays[0].children[0].style,{left:'100px',top:'200px',width:'50px',height:'20px'});highlighter.clear();
   }finally{for(const [key,value]of saved){if(value===undefined)delete globalThis[key];else globalThis[key]=value}}
 });
+
+test('local overlays paint with native Highlight available, keep the active hit past the limit, and follow scrolling and layout changes',()=>{
+  const saved=new Map(['window','document','requestAnimationFrame','cancelAnimationFrame','ResizeObserver','innerWidth','innerHeight'].map(key=>[key,globalThis[key]]));
+  const highlights=new Map(),listeners=new Map(),overlays=[];let frame,resize,disconnected=0;
+  const node=()=>({style:{},children:[],setAttribute(){},append(child){this.children.push(child)},replaceChildren(){this.children=[]},remove(){this.removed=true}});
+  globalThis.window={CSS:{highlights},Highlight:class{constructor(...ranges){this.ranges=ranges}},addEventListener(type,callback){listeners.set(type,callback)},removeEventListener(type){listeners.delete(type)}};
+  globalThis.document={createElement:node,body:{append:item=>overlays.push(item)}};
+  globalThis.requestAnimationFrame=callback=>{frame=callback;return 1};globalThis.cancelAnimationFrame=()=>{};
+  globalThis.ResizeObserver=class{constructor(callback){resize=callback}observe(){}disconnect(){disconnected++}};
+  globalThis.innerWidth=1000;globalThis.innerHeight=800;
+  let bounds={left:100,top:200,right:500,bottom:400};const clip={getBoundingClientRect:()=>bounds};
+  const offscreen={getClientRects:()=>[{left:0,top:900,right:30,bottom:920,width:30,height:20}]};
+  const rect={left:110,top:210,right:150,bottom:230,width:40,height:20},active={getClientRects:()=>[rect,rect]};
+  try{
+    const highlighter=new SearchHighlighter('syp-search',()=>clip,{overlay:true,overlayZIndex:3});
+    highlighter.set([...Array(2001).fill(offscreen),active],active);frame();
+    assert.equal(highlights.get('syp-search-active').ranges[0],active);
+    assert.equal(overlays[0].style.zIndex,'3');assert.equal(overlays[0].children.length,1);
+    assert.equal(overlays[0].children[0].className,'syp-highlight syp-highlight--active');
+    rect.top-=5;rect.bottom-=5;listeners.get('scroll')();frame();assert.equal(overlays[0].children[0].style.top,'205px');
+    bounds={...bounds,right:130};resize();frame();assert.equal(overlays[0].children[0].style.width,'20px');
+    highlighter.clear();assert.equal(overlays[0].removed,true);assert.equal(listeners.size,0);assert.equal(highlights.size,0);assert.ok(disconnected>0);
+  }finally{for(const [key,value]of saved){if(value===undefined)delete globalThis[key];else globalThis[key]=value}}
+});

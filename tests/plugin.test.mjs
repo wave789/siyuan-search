@@ -157,7 +157,7 @@ test('opening a global hit retains the complete document around the exact target
   const f=documentHost();
   const opened=await f.plugin.openBlock(f.hit,f.root);
   assert.equal(opened,f.editor);assert.equal(f.calls.length,1);
-  assert.deepEqual(f.calls[0],{id:f.hit,action:['cb-get-context','cb-get-hl','cb-get-focus'],zoomIn:false,keepCursor:false});
+  assert.deepEqual(f.calls[0],{id:f.hit,action:['cb-get-context','cb-get-focus'],zoomIn:false,keepCursor:false});
   assert.equal(f.blocks.has(f.sibling),true);assert.equal(f.state.restores,0);assert.equal(f.plugin.revealing,0);
 });
 
@@ -172,6 +172,7 @@ test('page-find navigation to an unloaded hit requests the same document context
   const f=documentHost();
   assert.equal(await f.plugin.localHost().reveal(f.hit,f.editor),f.editor);
   assert.ok(f.calls[0].action.includes('cb-get-context'));assert.equal(f.calls[0].zoomIn,false);
+  assert.equal(f.calls[0].action.includes('cb-get-hl'),false);
   assert.equal(f.blocks.has(f.sibling),true);
 });
 
@@ -182,6 +183,7 @@ test('reusing a focused editor waits for native exit-focus before locating the h
   assert.equal(f.calls.length,1);f.state.restore();
   assert.equal(await opening,f.editor);assert.equal(f.editor.block.id,f.root);assert.equal(f.editor.block.showAll,false);
   assert.equal(f.blocks.has(f.sibling),true);assert.equal(f.calls.length,2);assert.equal(f.calls[1].id,f.hit);
+  assert.ok(f.calls.every(call=>!call.action.includes('cb-get-hl')));
   assert.equal(f.observerCount,0);assert.equal(f.plugin.revealing,0);
 });
 
